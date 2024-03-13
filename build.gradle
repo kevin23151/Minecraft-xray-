@@ -1,0 +1,109 @@
+plugins {
+    id "dev.architectury.loom" version "1.2-SNAPSHOT"
+    id 'maven-publish'
+    id "com.matthewprenger.cursegradle" version "1.4.0"
+}
+
+sourceCompatibility = targetCompatibility = compileJava.sourceCompatibility = compileJava.targetCompatibility = 17
+
+def ENV = System.getenv()
+version = "${minecraft_version}-${mod_version}-build.${ENV.GITHUB_RUN_NUMBER ?: 9999}"
+group= "pro.mikey"
+archivesBaseName = "advanced-xray-forge"
+
+loom {
+    silentMojangMappingsLicense()
+
+    forge {
+    }
+
+    accessWidenerPath = file("src/main/resources/xray.accesswidener")
+}
+
+repositories {
+}
+
+def replaceProperties = [
+    minecraft_version: minecraft_version,
+    minecraft_version_range: minecraft_version_range.replace("[%base]", minecraft_version),
+    forge_version_range: forge_version.split("\\.").first(),
+    version: version,
+]
+
+processResources {
+    inputs.properties replaceProperties
+    replaceProperties.put 'project', project
+
+    filesMatching("META-INF/mods.toml") {
+        expand replaceProperties
+    }
+}
+
+dependencies {
+    minecraft "com.mojang:minecraft:${project.minecraft_version}"
+    mappings loom.officialMojangMappings()
+
+    forge "net.minecraftforge:forge:${project.minecraft_version}-${project.forge_version}"
+}
+
+compileJava {
+    options.encoding = "UTF-8"
+}
+
+java {
+    withSourcesJar()
+}
+
+jar {
+    from("LICENSE") {
+        rename { "${it}_${project.archivesBaseName}" }
+    }
+
+    manifest {
+        attributes([
+                "Specification-Title"     : "Advanced XRay",
+                "Specification-Vendor"    : "Advanced XRay",
+                "Specification-Version"   : "1",
+                "Implementation-Title"    : "Advanced XRay",
+                "Implementation-Version"  : version,
+                "Implementation-Vendor"   : "Advanced XRay",
+                "Implementation-Timestamp": new Date().format("yyyy-MM-dd'T'HH:mm:ssZ")
+        ])
+    }
+}
+
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            artifactId = rootProject.archivesBaseName
+            from components.java
+        }
+    }
+
+    repositories {
+        if (ENV.SAPS_TOKEN) {
+            maven {
+                url "https://maven.saps.dev/releases"
+                credentials {
+                    username = "mikeymods"
+                    password = "${ENV.SAPS_TOKEN}"
+                }
+            }
+        }
+    }
+}
+
+if (ENV.CURSE_DEPLOY_TOKEN) {
+    curseforge {
+        apiKey = ENV.CURSE_DEPLOY_TOKEN
+        project {
+            id = project.curse_id
+            releaseType = "release"
+            addGameVersion "Forge"
+            addGameVersion "$minecraft_version"
+            changelog = file("./CHANGELOG.md")
+            changelogType = 'markdown'
+            mainArtifact(remapJar)
+        }
+    }
+}
